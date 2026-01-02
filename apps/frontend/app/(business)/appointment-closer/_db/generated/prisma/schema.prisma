@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../_db/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum AcLeadStage {
+  New
+  Qualified
+  Booked
+  Cold
+  Won
+  Lost
+}
+
+enum AcMessageFrom {
+  lead
+  ai
+  human
+}
+
+enum AcAppointmentStatus {
+  Booked
+  Pending
+  Canceled
+}
+
+model AcLead {
+  id       String      @id @default(cuid())
+  tenantId String
+  name     String
+  phone    String?     @db.VarChar(64)
+  email    String?     @db.VarChar(191)
+  stage    AcLeadStage @default(New)
+
+  notes          String?   @db.Text
+  nextFollowUpAt DateTime?
+  ai             Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversations AcConversation[]
+  appointments  AcAppointment[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, stage])
+  @@index([tenantId, nextFollowUpAt])
+  @@index([tenantId, updatedAt])
+  @@map("ac_leads")
+}
+
+model AcConversation {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leadId String
+  lead   AcLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  channel String @db.VarChar(32)
+
+  unreadCount Int      @default(0)
+  lastAt      DateTime @default(now())
+
+  messages AcMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@index([tenantId, leadId])
+  @@index([tenantId, lastAt])
+  @@map("ac_conversations")
+}
+
+model AcMessage {
+  id       String @id @default(cuid())
+  tenantId String
+
+  conversationId String
+  conversation   AcConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  at   DateTime      @default(now())
+  from AcMessageFrom
+  text String        @db.Text
+
+  @@unique([tenantId, id])
+  @@index([tenantId, conversationId, at])
+  @@index([tenantId, at])
+  @@map("ac_messages")
+}
+
+model AcAppointment {
+  id       String @id @default(cuid())
+  tenantId String
+
+  leadId String
+  lead   AcLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  service     String              @db.VarChar(191)
+  startAt     DateTime
+  durationMin Int
+  status      AcAppointmentStatus @default(Booked)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, id])
+  @@index([tenantId, leadId, startAt])
+  @@index([tenantId, startAt])
+  @@map("ac_appointments")
+}
+
+model AcSettings {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  businessName String @default("Your Business") @db.VarChar(191)
+  timezone     String @default("America/New_York") @db.VarChar(64)
+
+  hoursJson    Json?
+  servicesJson Json?
+  faqsJson     Json?
+  qualQsJson   Json?
+
+  bookingJson   Json?
+  followupsJson Json?
+
+  followupSteps AcFollowupStep[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ac_settings")
+}
+
+model AcFollowupStep {
+  id       String @id @default(cuid())
+  tenantId String
+
+  settingsId String
+  settings   AcSettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  stepKey    String  @db.VarChar(64)
+  afterHours Int
+  message    String  @db.Text
+  enabled    Boolean @default(true)
+  sortOrder  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, settingsId, stepKey])
+  @@index([tenantId, settingsId, sortOrder])
+  @@map("ac_followup_steps")
+}
