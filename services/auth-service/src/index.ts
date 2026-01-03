@@ -10,33 +10,50 @@ const app = express();
 
 app.use(express.json());
 
-// Log every request
-app.use((req, res, next) => {
+// Log every request (keep for now; later we can make it conditional)
+app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
 });
 
-// CORS – allow your Next.js dev app
-const allowedOrigin = "http://localhost:3000";
+/**
+ * CORS
+ * - In production, allow your deployed frontend origin(s)
+ * - In dev, allow localhost:3000
+ *
+ * Set ALLOWED_ORIGINS as a comma-separated list, e.g.
+ * ALLOWED_ORIGINS="http://localhost:3000,https://your-frontend.vercel.app"
+ */
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: allowedOrigin,
+    origin: (origin, cb) => {
+      // Allow non-browser requests (curl/postman) and same-origin/no-origin
+      if (!origin) return cb(null, true);
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      return cb(new Error(`CORS blocked for origin: ${origin}`));
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// Explicit preflight handlers for Express 5
-app.options("/auth/signup", cors());
-app.options("/auth/login", cors());
+// Health check (so Railway domain test works)
+app.get("/health", (_req, res) => {
+  res.status(200).json({ ok: true, service: "auth-service", ts: Date.now() });
+});
 
 // Mount /auth routes
 app.use("/auth", authRoutes);
 
-// ⬇️ IMPORTANT: use 5001 instead of 5000
-const PORT = process.env.PORT || 5001;
+// ✅ Railway injects PORT. Always listen on it.
+const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
 
-app.listen(PORT, () => {
+// ✅ bind to 0.0.0.0 in containers
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Auth service running on port ${PORT}`);
 });
