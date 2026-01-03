@@ -23,8 +23,10 @@ app.use((req, _res, next) => {
  *
  * Set ALLOWED_ORIGINS as a comma-separated list, e.g.
  * ALLOWED_ORIGINS="http://localhost:3000,https://your-frontend.vercel.app"
+ *
+ * (We support BOTH env names: ALLOWED_ORIGINS (preferred) and CORS_ORIGIN (legacy))
  */
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
+const allowedOrigins: string[] = (process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || "http://localhost:3000")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
@@ -34,13 +36,20 @@ app.use(
     origin: (origin, cb) => {
       // Allow non-browser requests (curl/postman) and same-origin/no-origin
       if (!origin) return cb(null, true);
+
       if (allowedOrigins.includes(origin)) return cb(null, true);
+
+      // In Express, throwing here can look like a 500. Returning an error is correct.
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   })
 );
+
+// Explicit preflight (safe)
+app.options("*", cors());
 
 // Health check (so Railway domain test works)
 app.get("/health", (_req, res) => {
